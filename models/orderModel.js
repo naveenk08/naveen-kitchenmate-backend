@@ -45,6 +45,58 @@ GROUP BY
   );
   return rows;
 };
+const showRecentOrders = async (id) => {
+  const [rows] = await db.query(
+    `SELECT 
+    oh.orderId,
+    oh.orderNum,
+    oh.billName,
+    oh.kitchenId,
+    oh.orderTime,
+    oh.net_amount,
+    oh.paymentType,
+    COALESCE(
+    (
+        SELECT GROUP_CONCAT(km.mapValue SEPARATOR ', ')
+        FROM kt_paymentInfo pi
+        JOIN kt_masterMapping km ON pi.paymentType = km.id
+        WHERE pi.invoiceId = oh.orderId
+    ),
+    'N/A'
+) AS paymentMethod,
+     CASE 
+        WHEN oh.tableId = 0 THEN 'Parcel'
+        ELSE CONCAT(km.mapValue, ' ', kt.tableName)
+    END AS tableName,
+    DATE_FORMAT(oh.orderTime, '%a, %h:%i %p') AS time_only,
+    -- add any other non-aggregated columns you need from oh.*
+    JSON_ARRAYAGG(
+        JSON_OBJECT(
+            'name', ki.itemName,
+            'qty', od.quantity
+        )
+    ) AS services
+FROM 
+    kt_orderHeader oh
+JOIN 
+    kt_orderDetails od ON oh.orderId = od.orderId
+JOIN 
+    kt_items ki ON od.itemId = ki.itemId
+LEFT JOIN 
+    kt_tables kt ON oh.tableId = kt.tableId
+LEFT JOIN 
+    kt_masterMapping km ON kt.areaId = km.id
+WHERE 
+    oh.status = 1
+    and oh.orderTime >= NOW() - INTERVAL 24 HOUR
+    AND oh.kitchenId = ?
+GROUP BY 
+    oh.orderId, oh.kitchenId, oh.orderTime
+    ORDER BY oh.orderId desc;`,
+    [id]
+  );
+  return rows;
+};
 
 const getOrdersByKitchenId = async (id, date) => {
   let query = `SELECT 
@@ -53,6 +105,7 @@ const getOrdersByKitchenId = async (id, date) => {
     oh.billName,
     oh.kitchenId,
     oh.orderTime,
+    oh.paymentType,
     (
         SELECT GROUP_CONCAT(
           km.mapValue SEPARATOR ', '
@@ -87,12 +140,12 @@ WHERE
     oh.status = 1
     AND oh.delFlag = 0
     AND oh.kitchenId = ?
-    AND DATE(oh.orderTime) = CURDATE()
+    AND DATE(oh.orderTime) = ?
 GROUP BY 
     oh.orderId, oh.kitchenId, oh.orderTime
 ORDER BY 
     oh.orderId DESC;`;
-  let values = [id];
+  let values = [id, date];
 
   const [rows] = await db.query(query, values);
   return rows;
@@ -111,9 +164,9 @@ const getOrderDetailsById = async (id) => {
 };
 
 const getOrderHeaderById = async (id) => {
-  try{
-  const [rows] = await db.query(
-    `select oh.*,DATE_FORMAT(orderTime, '%a, %d %M %I:%i %p') AS dateString, 
+  try {
+    const [rows] = await db.query(
+      `select oh.*,DATE_FORMAT(orderTime, '%a, %d %M %I:%i %p') AS dateString, DATE_FORMAT(orderTime, '%d-%m-%Y %I:%i %p') AS dateForBill, 
     CASE 
         WHEN oh.tableId = 0 THEN 'Parcel'
         ELSE CONCAT(km.mapValue, ' ', kt.tableName)
@@ -132,13 +185,12 @@ const getOrderHeaderById = async (id) => {
 LEFT JOIN 
     kt_masterMapping km ON kt.areaId = km.id
     where orderId=?`,
-    [id]
-  );
-  
-  return rows[0];
-}
-  catch(err){
-    log(err)
+      [id]
+    );
+
+    return rows[0];
+  } catch (err) {
+    log(err);
   }
 };
 
@@ -189,8 +241,8 @@ const changePayment = async (orderId, paymentId) => {
   const sql = `update kt_orderHeader set paymentType = ${paymentId} where orderId = ${orderId}`;
   const [rows] = await db.query(sql);
 
-  const sql1 = 'delete from kt_paymentInfo where invoiceId= ?'
-    const [rows1] = await db.query(sql1,[orderId]);
+  const sql1 = "delete from kt_paymentInfo where invoiceId= ?";
+  const [rows1] = await db.query(sql1, [orderId]);
 
   return rows;
 };
@@ -202,6 +254,114 @@ const updatePrepStatus = async (orderId, status) => {
   const [rows] = await db.query(sql);
   return rows;
 };
+
+const getPendingOrders = async (kitchenId) => {
+  const [rows] = await db.query(
+    `
+SELECT 
+    oh.orderId,
+    oh.orderNum,
+    oh.billName,
+    oh.kitchenId,
+    oh.orderTime,
+    oh.net_amount,
+     CASE 
+        WHEN oh.tableId = 0 THEN 'Parcel'
+        ELSE CONCAT(km.mapValue, ' ', kt.tableName)
+    END AS tableName,
+    DATE_FORMAT(oh.orderTime, '%a, %h:%i %p') AS time_only,
+    -- add any other non-aggregated columns you need from oh.*
+    JSON_ARRAYAGG(
+        JSON_OBJECT(
+            'name', ki.itemName,
+            'qty', od.quantity,
+            'prevQty', od.prevQty,
+            'prepStatus', od.prepStatus
+        )
+    ) AS services
+FROM 
+    kt_orderHeader oh
+JOIN 
+    kt_orderDetails od ON oh.orderId = od.orderId
+JOIN 
+    kt_items ki ON od.itemId = ki.itemId
+LEFT JOIN 
+    kt_tables kt ON oh.tableId = kt.tableId
+LEFT JOIN 
+    kt_masterMapping km ON kt.areaId = km.id
+WHERE 
+     oh.kitchenId = ?
+    AND oh.delFlag = 0
+GROUP BY 
+    oh.orderId, oh.kitchenId, oh.orderTime
+    HAVING 
+    MIN(IFNULL(od.prepStatus, -1)) < 2
+    ORDER BY oh.orderId;
+`,
+    [kitchenId]
+  );
+
+  return rows;
+};
+const getCredit = async (kitchenId) => {
+  const [rows] = await db.query(
+    `
+
+select orderId, orderNum, billName, kt.tableName 'table', ko.tableId,
+items, net_amount,
+DATE_FORMAT(orderTime, '%d-%m-%Y %I:%i %p') orderTime,
+DATE_FORMAT(orderTime, '%d-%m-%Y') dateOnly
+from 
+kt_orderHeader ko, kt_tables kt, kt_mastermapping km
+where ko.tableId = kt.tableId
+and kt.areaId = km.id
+and ko.paymentType=0
+and ko.kitchenId = ?
+and ko.delFlag =0;
+`,
+    [kitchenId]
+  );
+
+  return rows;
+};
+const updateCreditHeader = async (kitchenId, orders, date) => {
+  const [rows] = await db.query(
+    `
+update kt_orderHeader set paymentType=1, clearingDate=?
+where paymentType=0
+and kitchenId = ?
+and orderId in (?)
+`,
+    [date, kitchenId, orders]
+  );
+
+  return rows;
+};
+const addCreditPayment = async (orders, method) => {
+  const placeholders = orders.map(() => '?').join(', ');
+
+  const sql = `
+    INSERT INTO kt_paymentInfo (invoiceId, paymentAmount, paymentType)
+    SELECT 
+        ko.orderId,
+        ko.net_amount,
+        (
+            SELECT id 
+            FROM kt_masterMapping 
+            WHERE mapType = 'PaymentOption'
+              AND LOWER(mapValue) = LOWER(?)
+            LIMIT 1
+        ) AS paymentType
+    FROM kt_orderHeader ko
+    WHERE ko.orderId IN (${placeholders})
+  `;
+
+  const params = [method, ...orders];
+
+  const [rows] = await db.query(sql, params);
+  return rows;
+};
+
 
 const deleteOrder = async (id, userId, userType) => {
   let sql = "";
@@ -253,6 +413,21 @@ const getMaxOrderNum = async (id) => {
   return rows;
 };
 
+const getNextOrderNum = async (kitchenId) => {
+  const [rows] = await db.query(
+    `
+    INSERT INTO kt_order_seq (kitchenId, lastOrderNum)
+    VALUES (?, 1)
+    ON DUPLICATE KEY UPDATE lastOrderNum = LAST_INSERT_ID(lastOrderNum + 1);
+  `,
+    [kitchenId]
+  );
+
+  // Fetch the new number
+  const [result] = await db.query("SELECT LAST_INSERT_ID() AS newOrderNum;");
+  return result[0].newOrderNum;
+};
+
 const newOrderHeader = async (
   orderNum,
   kitchenId,
@@ -266,12 +441,14 @@ const newOrderHeader = async (
   status,
   amount,
   discount,
+  tax,
   net_amount,
-  paymentMethod
+  paymentMethod,
 ) => {
+
   const query = `INSERT INTO kt_orderHeader (orderNum,kitchenId,userId,billName,billContact,billEmail,tableId,
-  items,status,amount,discount,packingCharge,net_amount,paymentType,delFlag,orderTime) 
-  VALUES (?,?,?, ?,?, ?,?, ?, ?, ?, ?, ?, ?, ?,0, SYSDATE())`;
+  items,status,amount,discount,packingCharge,tax,net_amount,paymentType,delFlag,orderTime) 
+  VALUES (?,?,?, ?,?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?,0, SYSDATE())`;
   const [result] = await db.query(query, [
     orderNum,
     kitchenId,
@@ -285,6 +462,7 @@ const newOrderHeader = async (
     amount,
     discount,
     packingRate,
+    tax,
     net_amount,
     paymentMethod,
   ]);
@@ -307,7 +485,6 @@ const newOrderHeader = async (
 };
 
 const saveOrder = async (orderId, totalItems, totalAmount, packingRate) => {
-
   const query = `update kt_orderHeader koh set items = items+?, amount=amount+?, packingCharge= packingCharge+?, net_amount=net_amount+? where koh.orderId =? `;
   const [result] = await db.query(query, [
     totalItems,
@@ -326,7 +503,8 @@ const newOrderDetail = async (
   userId,
   quantity,
   rate,
-  totalAmount
+  totalAmount,
+  served
 ) => {
   // Check if the item already exists in the order
   const checkQuery = `SELECT quantity, totalAmount, prepStatus, prevQty FROM kt_orderDetails WHERE orderId = ? AND itemId = ?`;
@@ -339,28 +517,31 @@ const newOrderDetail = async (
     const prepStatus = existingRows[0].prepStatus;
 
     const prevQtyValue =
-      prepStatus === 2 ? existingRows[0].quantity : existingRows[0].prevQty;
+      prepStatus > 0 ? existingRows[0].quantity : existingRows[0].prevQty;
 
     const updateQuery = `UPDATE kt_orderDetails 
-                         SET quantity = ?, prevQty = ?, totalAmount = ?, prepStatus = NULL, updateTime = SYSDATE() 
+                         SET quantity = ?, prevQty = ?, totalAmount = ?, prepStatus = ?, prevQty = ?, updateTime = SYSDATE() 
                          WHERE orderId = ? AND itemId = ?`;
     await db.query(updateQuery, [
       newQuantity,
       prevQtyValue,
       newTotalAmount,
+      served,
+      prevQtyValue,
       orderId,
       itemId,
     ]);
     return { updated: true, orderId, itemId, newQuantity, newTotalAmount };
   } else {
     // If item does not exist, insert a new record
-    const insertQuery = `INSERT INTO kt_orderDetails (orderId, kitchenId, itemId, userId, quantity, rate, totalAmount, updateTime) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE())`;
+    const insertQuery = `INSERT INTO kt_orderDetails (orderId, kitchenId, itemId, userId, prepStatus, quantity, rate, totalAmount, updateTime) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, SYSDATE())`;
     await db.query(insertQuery, [
       orderId,
       kitchenId,
       itemId,
       userId,
+      served,
       quantity,
       rate,
       totalAmount,
@@ -374,16 +555,23 @@ const markOrderPaid = async (
   paymentMethod,
   discount,
   netAmount,
-  packingCharge,billName,billEmail,billContact
+  packingCharge,
+  billName,
+  billEmail,
+  billContact,
+  tax
 ) => {
-  const query = `UPDATE kt_orderHeader SET status = 1,paymentType=?,discount=?,net_amount=?,packingCharge=?,  
-                 billName=?, billContact=?,billEmail=? WHERE orderId = ?`;
+  const query = `UPDATE kt_orderHeader SET status = 1,paymentType=1,discount=?,net_amount=?,packingCharge=?,  
+                 billName=?, billContact=?,billEmail=?, tax=? WHERE orderId = ?`;
   const [result] = await db.query(query, [
     paymentMethod,
     discount,
     netAmount,
     packingCharge,
-    billName,billContact,billEmail,
+    billName,
+    billContact,
+    billEmail,
+    tax,
     orderId,
   ]);
   return result;
@@ -456,8 +644,6 @@ GROUP BY ms.month, ms.start_date,ms.value
 ORDER BY ms.start_date ASC;`;
   }
 
-  
-
   try {
     const [rows] = await db.execute(sql);
 
@@ -472,11 +658,11 @@ const getPaymentData = async (type, kitchenId) => {
   let level = "";
 
   if (type == "daily") {
-    level = 'CURDATE()'
+    level = "CURDATE()";
   } else if (type == "monthly") {
-    level = `DATE_FORMAT(CURDATE(), '%Y-%m-01 00:00:00')`
+    level = `DATE_FORMAT(CURDATE(), '%Y-%m-01 00:00:00')`;
   } else {
-    level = 'DATE_SUB(CURDATE(), INTERVAL (WEEKDAY(CURDATE())) DAY)'
+    level = "DATE_SUB(CURDATE(), INTERVAL (WEEKDAY(CURDATE())) DAY)";
   }
 
   const paymentQuery = `
@@ -580,18 +766,17 @@ GROUP BY koh.orderNum,po.mapValue
 
 ORDER BY \`Order#\`, FIELD(Item, 'TOTAL'), Item;`;
 
-
   const [rows] = await db.query(query);
 
   return rows;
 };
-const getAllSalesForDay1 = async (kitchenId, date,endDate) => {
+const getAllSalesForDay1 = async (kitchenId, date, endDate) => {
   const query = `
 
 SELECT 
     oh.orderId,
     oh.orderNum,
-    DATE_FORMAT(oh.orderTime, '%d %M %Y %I:%i %p') AS dateString,
+    DATE_FORMAT(oh.orderTime, '%d-%m-%Y %I:%i %p') AS dateString,
     oh.billName AS customerName,
     -- Table information
     concat(mm_table.mapValue,' ',t.tableName) as tableName,
@@ -645,12 +830,12 @@ WHERE
 ORDER BY 
     oh.orderTime ASC,
     oh.orderId;`;
-  const [rows] = await db.query(query,[kitchenId,date, endDate]);
+  const [rows] = await db.query(query, [kitchenId, date, endDate]);
 
   return rows;
 };
 
-const getDaysSummary = async (kitchenId, date,endDate) => {
+const getDaysSummary = async (kitchenId, date, endDate) => {
   const query = `select sum(amount) amount,sum(net_amount) netAmount,sum(discount) discount ,
   sum(packingCharge) packingCharge,count(*) count
 from kt_orderHeader koh 
@@ -664,7 +849,7 @@ and delFlag =0
 
   return rows[0];
 };
-const getDaysPaymentSummary = async (kitchenId, date,endDate) => {
+const getDaysPaymentSummary = async (kitchenId, date, endDate) => {
   const query = `SELECT 
   po.mapValue optionName,
   SUM(kp.paymentAmount) AS amount
@@ -678,12 +863,11 @@ and  DATE_FORMAT(koh.orderTime, '%Y-%m-%d') between '${date}' and '${endDate}'
 GROUP BY po.mapValue
 ;`;
 
-
   const [rows] = await db.query(query);
 
   return rows;
 };
-const customerData = async (kitchenId, date,endDate) => {
+const customerData = async (kitchenId, date, endDate) => {
   const query = `
   
 SELECT 
@@ -710,8 +894,7 @@ GROUP BY
     km.mapValue;
 ;`;
 
-
-  const [rows] = await db.query(query,[kitchenId,date,endDate]);
+  const [rows] = await db.query(query, [kitchenId, date, endDate]);
 
   return rows;
 };
@@ -850,34 +1033,45 @@ const getOrderDetailsPDF = async (orderId) => {
   return order;
 };
 
-const addPayment= async (orderId,paymentType,amount) => {
-  
-    try {
-      const sql = `INSERT INTO kt_paymentInfo 
+const addPayment = async (orderId, paymentType, amount) => {
+  try {
+    const sql = `INSERT INTO kt_paymentInfo 
                   (invoiceId, paymentType, paymentAmount) 
                   VALUES (?, ?, ?)`;
-      const [result] = await db.execute(sql, [
-        orderId,
-        paymentType,
-        amount,
-      ]);
-      return { success: true, id: result.insertId };
-    } catch (error) {
-      console.error(error);
-      return { success: false, error };
-    }
+    const [result] = await db.execute(sql, [orderId, paymentType, amount]);
+    return { success: true, id: result.insertId };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error };
   }
+};
 
 const updateOrder = async (data) => {
   try {
-    const sql = `update kt_orderHeader set discount=?, packingCharge=?,  net_amount=? where orderId=?`;
+    const sql = `update kt_orderHeader set billName=?, billEmail=?, billContact=?, discount=?, packingCharge=?,  net_amount=? where orderId=?`;
     const [result] = await db.execute(sql, [
+      data.billName,
+      data.billEmail,
+      data.billContact,
       data.discount,
       data.packingCharge,
       data.netAmount,
       data.orderId,
     ]);
     return { success: true, id: result.insertId };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error };
+  }
+};
+
+const resetOrderSequence = async (kitchenId) => {
+  try {
+    const sql = `INSERT INTO kt_order_seq (kitchenId, lastOrderNum)
+    VALUES (?, 0)
+    ON DUPLICATE KEY UPDATE lastOrderNum = 0;`;
+    const [result] = await db.execute(sql, [kitchenId]);
+    return { success: true };
   } catch (error) {
     console.error(error);
     return { success: false, error };
@@ -912,6 +1106,12 @@ module.exports = {
   customerData,
   graphDataMonth,
   graphDataDay,
-  updateOrder
-
+  updateOrder,
+  showRecentOrders,
+  getNextOrderNum,
+  resetOrderSequence,
+  getPendingOrders,
+  getCredit,
+  updateCreditHeader,
+  addCreditPayment,
 };

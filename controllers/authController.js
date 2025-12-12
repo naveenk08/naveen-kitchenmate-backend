@@ -1,5 +1,6 @@
 const AuthModel = require("../models/authModel");
 const UserModel = require("../models/userModel");
+const KitchenModel = require("../models/kitchenModel");
 const { sendOTP } = require("../services/newSendEmail");
 
 exports.verifyUser = async (req, res, next) => {
@@ -18,7 +19,18 @@ exports.getUser = async (req, res, next) => {
 
   try {
     const data = await AuthModel.getUser(id);
-    res.json(data);
+
+    const kitchenId = data ? data.kId : null;
+
+    let getDefaultDiscount = {};
+    if (kitchenId) {
+      getDefaultDiscount = await KitchenModel.getDefaultDiscount(kitchenId);
+    }
+
+    const returnData = { ...data, defaultDiscount: getDefaultDiscount?.defaultDiscount||0 };
+
+    
+    res.json(returnData);
   } catch (err) {
     next(err);
   }

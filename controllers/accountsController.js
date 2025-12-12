@@ -1,4 +1,4 @@
-const {accountsModel} = require("../models/accountsModel");
+const { accountsModel } = require("../models/accountsModel");
 const generateSignedUrl = require("../services/getSignedUrl");
 
 exports.getAccountDetail = async (req, res) => {
@@ -18,6 +18,8 @@ exports.getAccountDetail = async (req, res) => {
 
 exports.getAccountClosingDetails = async (req, res) => {
   try {
+
+    console.log("Request Body:", req.body);
     const { kitchen, date } = req.body;
 
     const accountDetails = await accountsModel.getAccountOpeningDetail(
@@ -26,19 +28,24 @@ exports.getAccountClosingDetails = async (req, res) => {
     );
     const revenueDetails = await accountsModel.getRevenueDetail(kitchen, date);
 
-    
     const expenseDetails = await accountsModel.expenseDetails(kitchen, date);
+
+    const adjustedDetails = await accountsModel.getAdjustedDetails(
+      kitchen,
+      date
+    );
 
     res.status(201).json({
       success: true,
       accountDetails,
       revenueDetails,
       expenseDetails,
+      adjustedDetails
     });
   } catch (err) {
     res
       .status(500)
-      .json({ success: false, error: "Failed to update accounts" });
+      .json({ success: false, error: "Failed to get accounts" });
     console.log(err);
   }
 };
@@ -126,9 +133,56 @@ exports.getAccountStatus = async (req, res) => {
   try {
     const { kitchen, date } = req.query;
 
-
     const status = await accountsModel.getAccountStatusForDay(date, kitchen);
-    
+
+    if (status) {
+      res.status(201).json({
+        success: true,
+        status,
+      });
+    } else {
+      res.status(201).json({
+        success: false,
+      });
+    }
+  } catch (err) {
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to update accounts" });
+    console.log(err);
+  }
+};
+exports.adjustAccount = async (req, res) => {
+  try {
+    const {
+      kitchen,
+      user,
+      date,
+      transactionType,
+      paymentMethod,
+      amount,
+      description,
+    } = req.body;
+
+    let transactionTypeName
+    let paymentMethodName
+
+    if(transactionType == 0) transactionTypeName='Pay In'
+    else transactionTypeName = 'Pay Out'
+
+    if(paymentMethod == 0) paymentMethodName='Cash'
+    else paymentMethodName = 'Account'
+
+
+    const status = await accountsModel.adjustAccount(kitchen,
+      user,
+      date,
+      transactionType,
+      transactionTypeName,
+      paymentMethod,
+      paymentMethodName,
+      amount,
+      description,);
 
     if (status) {
       res.status(201).json({

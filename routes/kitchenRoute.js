@@ -21,6 +21,7 @@ router.post("/addPaymentOption", KitchenController.addPaymentOption);
 router.get("/getHomeScreenData/:id", KitchenController.getHomeScreenData);
 router.get("/getTableStatus", KitchenController.getTableStatus);
 router.get("/getTableDetails", KitchenController.getTableDetails);
+router.get("/getTax", KitchenController.getTaxDetails);
 
-
+  
 module.exports = router;

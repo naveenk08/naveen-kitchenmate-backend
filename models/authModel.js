@@ -22,7 +22,7 @@ const verifyUser = async (username, password) => {
 const getUser = async (id) => {
   //   const { username, password } = req.body;
   const query = `select ku.id,kk.id kId ,ku.firstName,ku.lastname,ku.type,kk.name,kk.addr1,kk.addr2,kk.contact,kk.logo,kk.sub_level,kk.totTables,
-  kk.masterDevice,kk.kitchenDevice,kk.defaultCat, kk.defaultPrinting, kk.kotEnabled,kk.printerName, kk.accounts
+  kk.masterDevice,kk.kitchenDevice,kk.defaultCat, kk.defaultPrinting, kk.kotEnabled,kk.printerName, kk.accounts,kk.gst,kk.billFtText
                 from kt_users ku 
                 left join kt_kitchens kk 
                 on ku.kitchen_id = kk.id

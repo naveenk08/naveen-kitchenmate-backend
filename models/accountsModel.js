@@ -108,7 +108,7 @@ FROM combined_data;
     and oh.delFlag=0
     and oh.kitchenId=${kitchen}
     `;
-    
+
       const [result] = await db.execute(sql);
 
       return result;
@@ -137,6 +137,18 @@ LEFT JOIN kt_masterMapping km
       console.log(err);
     }
   },
+  getAdjustedDetails: async (kitchen, date) => {
+    try {
+      const sql = `
+select * from kt_accountDetails where kitchenId=? and DATE_FORMAT(clearingDate, '%d-%m-%Y') = ?
+    `;
+      const [result] = await db.execute(sql, [kitchen, date]);
+
+      return result;
+    } catch (err) {
+      console.log(err);
+    }
+  },
   updateAccountClosing: async (amount, accType, kitchen, date) => {
     try {
       const sql = `
@@ -153,7 +165,6 @@ LEFT JOIN kt_masterMapping km
     }
   },
   openAccountEntry: async ({ kitchen, type, opening }) => {
-
     try {
       const sql = `
        INSERT INTO kt_accounts (kitchenId, accountDate, type, opening, closing)
@@ -183,6 +194,34 @@ LEFT JOIN kt_masterMapping km
   getAccountStatusForDay: async (date, kitchen) => {
     const sql = `select opening, closing from kt_accounts where kitchenId = ? and DATE_FORMAT(accountDate, '%Y-%m-%d') = ?`;
     const [result] = await db.execute(sql, [kitchen, date]);
+
+    return result;
+  },
+  adjustAccount: async (
+    kitchen,
+    user,
+    date,
+    transactionType,
+    transactionTypeName,
+    paymentMethod,
+    paymentMethodName,
+    amount,
+    description
+  ) => {
+    const sql = `insert into kt_accountDetails ( kitchenId, userId, type, typeName,
+    paymentMethod, paymentMethodName, amount, description, clearingDate,modifyDate) 
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, sysdate())`;
+    const [result] = await db.execute(sql, [
+      kitchen,
+      user,
+      transactionType,
+      transactionTypeName,
+      paymentMethod,
+      paymentMethodName,
+      amount,
+      description,
+      date,
+    ]);
 
     return result;
   },

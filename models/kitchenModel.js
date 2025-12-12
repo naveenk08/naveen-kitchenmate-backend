@@ -9,7 +9,7 @@ const getKitchen = async (name, contact) => {
 };
 const getKitchenById = async (id) => {
   const [rows] = await db.query("SELECT * FROM kt_kitchens where id=? ", [id]);
-  return rows;
+  return rows[0];
 };
 const getKitchenBySecret = async (value) => {
   const [rows] = await db.query("SELECT * FROM kt_kitchens where secret=? ", [
@@ -17,6 +17,14 @@ const getKitchenBySecret = async (value) => {
   ]);
 
   return rows;
+};
+
+const getDefaultDiscount = async (kitchenId) => {
+  const [rows] = await db.query(
+    "select id, mapValue defaultDiscount from kt_masterMapping where kitchenId = ? and mapType = 'DefaultDiscount' and delFlag=0",
+    [kitchenId]
+  );
+  return rows[0];
 };
 const getPendingUserApproval = async (id) => {
   const [rows] = await db.query(
@@ -30,6 +38,15 @@ const updateLogo = async (id, url) => {
   const [rows] = await db.query(
     "update kt_kitchens set logo = ? where id = ?",
     [url, id]
+  );
+  return rows;
+};
+
+const getTaxDetails = async (kitchenId) => {
+  const [rows] = await db.query(
+    `SELECT id, mapDesc , mapValue  FROM kt_masterMapping 
+    WHERE mapType = 'Tax' AND kitchenId = ? AND delFlag = 0`,
+    [kitchenId]
   );
   return rows;
 };
@@ -65,6 +82,17 @@ const updateKitchenDetails = async (
   return result;
 };
 
+const updateDefaultDiscount = async (kitchenId, defaultDiscount) => {
+  const sql = `UPDATE kt_masterMapping set mapValue=?, updatetime = sysdate(), delFlag=0 where kitchenId=? and mapType='DefaultDiscount'`;
+  const [result] = await db.execute(sql, [defaultDiscount, kitchenId]);
+  if(result.affectedRows === 0){
+    const insertSql = `INSERT INTO kt_masterMapping (mapType, kitchenId, mapValue, delFlag, updatetime) VALUES ('DefaultDiscount', ?, ?, 0, sysdate())`;
+    const [insertResult] = await db.execute(insertSql, [kitchenId, defaultDiscount]);
+    return insertResult;
+  }
+  return result;
+};
+
 const insertKitchen = async (
   kitchenName,
   address1,
@@ -74,7 +102,6 @@ const insertKitchen = async (
   secret,
   tables
 ) => {
-
   const query =
     "INSERT INTO kt_kitchens (name,addr1,addr2,contact,email,secret,totTables,sub_level,custOrder,updatetime) VALUES (?, ?, ?, ?, ?,?,?,1,0,sysdate())";
   const [result] = await db.query(query, [
@@ -102,7 +129,7 @@ const getPaymentOptions = async (id) => {
     where kitchenId in (0, ?) and delFlag=0 and mapType = 'PaymentOption'`,
     [id]
   );
-  
+
   return rows;
 };
 const deletePaymentOption = async (id) => {
@@ -110,15 +137,15 @@ const deletePaymentOption = async (id) => {
     "update kt_masterMapping set delFlag = 1 where id = ?",
     [id]
   );
-  
+
   return rows;
 };
 const addPaymentOption = async (kitchenId, optionName) => {
   const [rows] = await db.query(
     "insert into kt_masterMapping (mapType,kitchenId,mapValue,delFlag,updatetime) values ('PaymentOption',?,?,0,sysdate())",
-    [kitchenId,optionName]
+    [kitchenId, optionName]
   );
-  
+
   return rows;
 };
 const getRevenue = async (kitchenId) => {
@@ -141,7 +168,7 @@ ORDER BY d.order_date DESC;
 `,
     [kitchenId]
   );
-  
+
   return rows;
 };
 const getExpense = async (kitchenId) => {
@@ -158,7 +185,7 @@ ORDER BY d.date;
 `,
     [kitchenId]
   );
-  
+
   return rows;
 };
 const getLatestOrders = async (kitchenId) => {
@@ -167,6 +194,7 @@ const getLatestOrders = async (kitchenId) => {
 SELECT 
   orderId AS invoice_id,
   orderNum AS invoice_number,
+  billName,
    CASE 
         WHEN oh.tableId = 0 THEN 'Parcel'
         ELSE CONCAT(km.mapValue, ' ', kt.tableName)
@@ -192,17 +220,64 @@ LEFT JOIN
 LEFT JOIN 
     kt_masterMapping km ON kt.areaId = km.id
 WHERE oh.delFlag = 0
+and oh.status = 1
 and oh.kitchenId = ?
 ORDER BY orderTime DESC
-LIMIT 3;
+LIMIT 8;
 `,
     [kitchenId]
   );
-  
+
   return rows;
 };
-const getTableStatus = async (kitchenId,table) => {
-  
+const getPendingOrders = async (kitchenId) => {
+  const [rows] = await db.query(
+    `
+SELECT 
+    oh.orderId,
+    oh.orderNum,
+    oh.billName,
+    oh.kitchenId,
+    oh.orderTime,
+    oh.net_amount,
+     CASE 
+        WHEN oh.tableId = 0 THEN 'Parcel'
+        ELSE CONCAT(km.mapValue, ' ', kt.tableName)
+    END AS tableName,
+    DATE_FORMAT(oh.orderTime, '%a, %h:%i %p') AS time_only,
+    -- add any other non-aggregated columns you need from oh.*
+    JSON_ARRAYAGG(
+        JSON_OBJECT(
+            'name', ki.itemName,
+            'qty', od.quantity,
+            'prepStatus', od.prepStatus
+        )
+    ) AS services
+FROM 
+    kt_orderHeader oh
+JOIN 
+    kt_orderDetails od ON oh.orderId = od.orderId
+JOIN 
+    kt_items ki ON od.itemId = ki.itemId
+LEFT JOIN 
+    kt_tables kt ON oh.tableId = kt.tableId
+LEFT JOIN 
+    kt_masterMapping km ON kt.areaId = km.id
+WHERE 
+     oh.kitchenId = ?
+    AND oh.delFlag = 0
+GROUP BY 
+    oh.orderId, oh.kitchenId, oh.orderTime
+    HAVING 
+     MIN( od.prepStatus ) <> 2 or min(od.prepStatus) is null
+    ORDER BY oh.orderId;
+`,
+    [kitchenId]
+  );
+
+  return rows;
+};
+const getTableStatus = async (kitchenId, table) => {
   const [rows] = await db.query(
     `
     select * from kt_orderHeader
@@ -211,13 +286,12 @@ const getTableStatus = async (kitchenId,table) => {
     and status = 0
     and delFlag=0;
 `,
-    [kitchenId,table]
+    [kitchenId, table]
   );
-  
+
   return rows;
 };
 const getTableDetails = async (kitchenId) => {
-
   const [rows] = await db.query(
     `
     SELECT 
@@ -258,9 +332,9 @@ const getTableDetails = async (kitchenId) => {
 		and m.mapType = 'DiningArea'
 		where t.kitchenId =?
     `,
-    [kitchenId,kitchenId]
+    [kitchenId, kitchenId]
   );
-  
+
   return rows;
 };
 
@@ -269,6 +343,7 @@ module.exports = {
   getKitchenById,
   insertKitchen,
   updateKitchenDetails,
+  updateDefaultDiscount,
   updateLogo,
   getKitchenBySecret,
   getPendingUserApproval,
@@ -280,5 +355,8 @@ module.exports = {
   getLatestOrders,
   getTableStatus,
   getTableDetails,
-  getExpense
+  getExpense,
+  getDefaultDiscount,
+  getTaxDetails,
+  getPendingOrders,
 };

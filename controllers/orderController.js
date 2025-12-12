@@ -18,6 +18,16 @@ exports.getAllActiveOrders = async (req, res, next) => {
     next(err);
   }
 };
+exports.showRecentOrders = async (req, res, next) => {
+  const id = req.params.id;
+
+  try {
+    const data = await OrderModel.showRecentOrders(id);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+};
 
 exports.showOrders = async (req, res, next) => {
   const { id, date } = req.params;
@@ -32,8 +42,7 @@ exports.showOrders = async (req, res, next) => {
 
 exports.getOrderHeaderById = async (req, res, next) => {
   const id = req.params.id;
-  
-  
+
   try {
     const data = await OrderModel.getOrderHeaderById(id);
     res.json(data);
@@ -63,26 +72,41 @@ exports.checkActiveTableOrder = async (req, res, next) => {
   }
 };
 
+exports.resetOrderSequence = async (req, res, next) => {
+  const { kitchenId } = req.body;
+
+  try {
+    const data = await OrderModel.resetOrderSequence(kitchenId);
+
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+};
+exports.pendingOrders = async (req, res, next) => {
+  const { kitchenId } = req.params;
+
+  try {
+    const data = await OrderModel.getPendingOrders(kitchenId);
+
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 exports.changePayment = async (req, res, next) => {
   const { orderId, paymentId, splitPayments, amount } = req.body;
   try {
     const data = await OrderModel.changePayment(orderId, paymentId);
-    if(paymentId==0 && splitPayments){
-        for (const payment of splitPayments) {
-              await OrderModel.addPayment(
-              orderId,
-              payment.methodId,
-                payment.amount,
-              );
-            }
+    if (paymentId == 0 && splitPayments) {
+      for (const payment of splitPayments) {
+        await OrderModel.addPayment(orderId, payment.methodId, payment.amount);
       }
-      else{
-          await OrderModel.addPayment(
-              orderId,
-              paymentId,
-              amount,
-            );
-      }
+    } else {
+      await OrderModel.addPayment(orderId, paymentId, amount);
+    }
     if (data.affectedRows > 0) {
       res.json({ success: true });
     } else {
@@ -147,6 +171,8 @@ exports.newOrder = async (req, res, next) => {
     paymentMethod,
     splitPayments,
     discount,
+    tax,
+    served,
     items,
   } = data;
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -156,9 +182,11 @@ exports.newOrder = async (req, res, next) => {
   const maxOrderResult = await OrderModel.getMaxOrderNum(kitchenId);
   const maxOrder = maxOrderResult[0].max_order;
 
+  const newOrderNum = await OrderModel.getNextOrderNum(kitchenId);
+
   try {
     const result = await OrderModel.newOrderHeader(
-      maxOrder + 1,
+      newOrderNum,
       kitchenId,
       userId,
       billName,
@@ -170,8 +198,9 @@ exports.newOrder = async (req, res, next) => {
       status,
       totalAmount,
       discount,
+      tax,
       netAmount,
-      paymentMethod
+      1//paymentMethod
     );
     if (result) {
       const { insertId: orderId, orderNum, orderTime } = result;
@@ -186,31 +215,25 @@ exports.newOrder = async (req, res, next) => {
             userId,
             item.quantity,
             item.itemRate,
-            item.totalAmount
+            item.totalAmount,
+            served
           );
         })
       );
-      
-      
 
-if(paymentMethod==0 && splitPayments){
-   for (const payment of splitPayments) {
     
-        await OrderModel.addPayment(
-         orderId,
-         payment.methodId,
-          payment.amount,
-        );
-      }
-}
-else{
-    await OrderModel.addPayment(
-         orderId,
-         paymentMethod,
-         netAmount,
-      );
-}
-
+        if (paymentMethod == 0 && splitPayments) {
+          for (const payment of splitPayments) {
+            await OrderModel.addPayment(
+              orderId,
+              payment.methodId,
+              payment.amount
+            );
+          }
+        } else {
+          await OrderModel.addPayment(orderId, paymentMethod, netAmount);
+        }
+      
       const kitchenData = await KitchenModel.getKitchenById(kitchenId);
 
       // if (kitchenData[0].sub_level > 1) {
@@ -221,15 +244,14 @@ else{
 
       // const sendPDF = sendOrderInvoice(orderData);
 
-      const orderDet = await OrderModel.getOrderHeaderById(orderId)
-
+      const orderDet = await OrderModel.getOrderHeaderById(orderId);
 
       return res.status(201).json({
         success: true,
         message: "Order Inserted successfully",
         orderId,
         orderNum,
-        date:orderDet.dateString,
+        date: orderDet.dateString,
         orderTime,
       });
     } else {
@@ -258,6 +280,7 @@ exports.saveOrder = async (req, res, next) => {
       table,
       packingRate,
       paymentMethod,
+      served,
       items,
     } = data;
 
@@ -278,8 +301,7 @@ exports.saveOrder = async (req, res, next) => {
 
     const kitchenDetail = await KitchenModel.getKitchenById(kitchenId);
 
-    const { name, addr1, sub_level } = kitchenDetail[0];
-
+    const { name, addr1, sub_level } = kitchenDetail;
 
     if (orderId) {
       result = await OrderModel.saveOrder(
@@ -289,11 +311,10 @@ exports.saveOrder = async (req, res, next) => {
         packingRate
       );
     } else {
-      const maxOrderResult = await OrderModel.getMaxOrderNum(kitchenId);
-      const maxOrder = maxOrderResult[0].max_order;
+      const newOrderNum = await OrderModel.getNextOrderNum(kitchenId);
 
       result = await OrderModel.newOrderHeader(
-        maxOrder + 1,
+        newOrderNum,
         kitchenId,
         userId,
         billName,
@@ -305,8 +326,9 @@ exports.saveOrder = async (req, res, next) => {
         status,
         totalAmount,
         null,
+        null,
         totalAmount + packingRate,
-        paymentMethod
+        0//paymentMethod
       );
 
       if (result?.insertId) {
@@ -333,7 +355,8 @@ exports.saveOrder = async (req, res, next) => {
           userId,
           item.quantity,
           item.itemRate,
-          item.totalAmount
+          item.totalAmount,
+          served
         );
       })
     );
@@ -342,11 +365,15 @@ exports.saveOrder = async (req, res, next) => {
     //   const messageStatus = await sendMessageToAll(kitchenId);
     // }
 
-    const orderNum = await OrderModel.getOrderHeaderById(orderId)
+    const orderNum = await OrderModel.getOrderHeaderById(orderId);
 
-    res
-      .status(200)
-      .json({ success: true, orderId, orderNum:orderNum.orderNum, date:orderNum.dateString, message: "Order saved successfully" });
+    res.status(200).json({
+      success: true,
+      orderId,
+      orderNum: orderNum.orderNum,
+      date: orderNum.dateString,
+      message: "Order saved successfully",
+    });
   } catch (err) {
     console.error("Error saving order:", err);
     next(err);
@@ -356,7 +383,18 @@ exports.saveOrder = async (req, res, next) => {
 exports.markOrderPaid = async (req, res, next) => {
   const data = req.body;
 
-  const { orderId, paymentMethod, splitPayments,discount, netAmount, packingCharge,billName,billEmail,billContact } = data;
+  const {
+    orderId,
+    paymentMethod,
+    splitPayments,
+    discount,
+    netAmount,
+    packingCharge,
+    billName,
+    billEmail,
+    billContact,
+    tax
+  } = data;
 
   try {
     // Call the model function to execute the SQL query
@@ -365,26 +403,20 @@ exports.markOrderPaid = async (req, res, next) => {
       paymentMethod,
       discount,
       netAmount,
-      packingCharge,billName,billEmail,billContact
+      packingCharge,
+      billName,
+      billEmail,
+      billContact,
+      tax
     );
 
-    if(paymentMethod==0 && splitPayments){
-        for (const payment of splitPayments) {
-          
-              await OrderModel.addPayment(
-              orderId,
-              payment.methodId,
-                payment.amount,
-              );
-            }
+    if (paymentMethod == 0 && splitPayments) {
+      for (const payment of splitPayments) {
+        await OrderModel.addPayment(orderId, payment.methodId, payment.amount);
       }
-      else{
-          await OrderModel.addPayment(
-              orderId,
-              paymentMethod,
-              netAmount,
-            );
-      }
+    } else {
+      await OrderModel.addPayment(orderId, paymentMethod, netAmount);
+    }
 
     if (result.affectedRows > 0) {
       // const orderData = await OrderModel.getOrderDetailsPDF(orderId);
@@ -425,8 +457,7 @@ exports.getReportData = async (req, res) => {
 
 exports.getItemWiseReport = async (req, res) => {
   try {
-    const { kitchenId, date, endDate ,type} = req.query;
-    
+    const { kitchenId, date, endDate, type } = req.query;
 
     if (!kitchenId) {
       return res
@@ -434,23 +465,58 @@ exports.getItemWiseReport = async (req, res) => {
         .json({ error: "Missing required query parameters" });
     }
 
-    const itemWiseData = await OrderModel.getItemWiseSales(kitchenId, date,endDate);
-    const completeData = await OrderModel.getAllSalesForDay1(kitchenId, date,endDate);
-    const summaryData = await OrderModel.getDaysSummary(kitchenId, date,endDate)
-    const expenseData = await expenseModel.getDaysExpense(kitchenId,date,endDate)
-    const paymentData = await OrderModel.getDaysPaymentSummary(kitchenId, date,endDate)
-    const customerData = await OrderModel.customerData(kitchenId, date,endDate)
-    const expenseDetails = await expenseModel.getExpenseDetail(kitchenId,date,endDate)
+    const itemWiseData = await OrderModel.getItemWiseSales(
+      kitchenId,
+      date,
+      endDate
+    );
+    const completeData = await OrderModel.getAllSalesForDay1(
+      kitchenId,
+      date,
+      endDate
+    );
+    const summaryData = await OrderModel.getDaysSummary(
+      kitchenId,
+      date,
+      endDate
+    );
+    const expenseData = await expenseModel.getDaysExpense(
+      kitchenId,
+      date,
+      endDate
+    );
+    const paymentData = await OrderModel.getDaysPaymentSummary(
+      kitchenId,
+      date,
+      endDate
+    );
+    const customerData = await OrderModel.customerData(
+      kitchenId,
+      date,
+      endDate
+    );
+    const expenseDetails = await expenseModel.getExpenseDetail(
+      kitchenId,
+      date,
+      endDate
+    );
 
-    let graphData
+    let graphData;
 
-    if(type == 0)
-      graphData = await OrderModel.graphDataDay(kitchenId,endDate)
-    else 
-    graphData = await OrderModel.graphDataMonth(kitchenId,date)
+    if (type == 0)
+      graphData = await OrderModel.graphDataDay(kitchenId, endDate);
+    else graphData = await OrderModel.graphDataMonth(kitchenId, date);
 
-    res.json({ itemWiseData: itemWiseData, completeData: completeData ,
-      summaryData:summaryData,paymentData:paymentData, expenseData ,customerData,expenseDetails,graphData});
+    res.json({
+      itemWiseData: itemWiseData,
+      completeData: completeData,
+      summaryData: summaryData,
+      paymentData: paymentData,
+      expenseData,
+      customerData,
+      expenseDetails,
+      graphData,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -474,10 +540,10 @@ exports.getDailyDiscounts = async (req, res) => {
 };
 
 exports.updatePrepStatus = async (req, res, next) => {
-  const { id, status } = req.body;
+  const { orderId, status } = req.body;
 
   try {
-    const data = await OrderModel.updatePrepStatus(id, status);
+    const data = await OrderModel.updatePrepStatus(orderId, status);
 
     if (data.affectedRows > 0) {
       return res.status(200).json({
@@ -504,4 +570,3 @@ exports.updateOrder = async (req, res, next) => {
     next(err);
   }
 };
-

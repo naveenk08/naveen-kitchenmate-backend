@@ -18,12 +18,13 @@ exports.getExpenseMetadata = async (req, res, next) => {
 
 exports.newExpense = async (req, res) => {
   try {
-    const { user, kitchen, type, paymentType, amount, description, date } =
+    const { user, kitchen,category, type, paymentType, amount, description, date } =
       req.body;
-
+    
     const addNewExpense = await expenseModel.newExpense(
       user,
       kitchen,
+      category,
       type,
       paymentType,
       amount,

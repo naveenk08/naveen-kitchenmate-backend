@@ -79,14 +79,35 @@ exports.getKitchenById = async (req, res, next) => {
 
   try {
     const data = await kitechnModel.getKitchenById(id);
-    res.json(data);
+
+    const defaultDiscount = await kitechnModel.getDefaultDiscount(id);
+
+    const returnData = {
+      ...data,
+      defaultDiscount: defaultDiscount ? defaultDiscount.defaultDiscount || 0 : 0,
+    };
+
+    res.json(returnData);
   } catch (err) {
     next(err);
   }
 };
 
 exports.updateKitchen = async (req, res) => {
-  const { id, name, addr1, addr2, contact, email, table, custOrder,defaultCat,defaultPrinting,kot } = req.body;
+  const {
+    id,
+    name,
+    addr1,
+    addr2,
+    contact,
+    email,
+    table,
+    custOrder,
+    defaultCat,
+    defaultPrinting,
+    kot,
+    defaultDiscount,
+  } = req.body;
 
   try {
     const result = await kitechnModel.updateKitchenDetails(
@@ -97,9 +118,13 @@ exports.updateKitchen = async (req, res) => {
       contact,
       email,
       table,
-      custOrder,defaultCat,defaultPrinting,kot
+      custOrder,
+      defaultCat,
+      defaultPrinting,
+      kot
     );
     if (result.affectedRows > 0) {
+      await kitechnModel.updateDefaultDiscount(id, defaultDiscount);
       return res.status(200).json({
         success: true,
         message: "updated successfully",
@@ -136,7 +161,7 @@ exports.getKitchenCounters = async (req, res, next) => {
   }
 };
 exports.getPaymentOptions = async (req, res, next) => {
-  const id = req.params.id;  
+  const id = req.params.id;
 
   try {
     const data = await kitechnModel.getPaymentOptions(id);
@@ -146,71 +171,79 @@ exports.getPaymentOptions = async (req, res, next) => {
   }
 };
 exports.deletePaymentOption = async (req, res, next) => {
-  const id = req.params.id;  
-  
+  const id = req.params.id;
 
   try {
     const data = await kitechnModel.deletePaymentOption(id);
-    if(data.affectedRows>0)
-    res.json({success:true});
-  else res.json({success:false});
+    if (data.affectedRows > 0) res.json({ success: true });
+    else res.json({ success: false });
   } catch (err) {
     next(err);
   }
 };
 exports.addPaymentOption = async (req, res, next) => {
-
-  
-  const {kitchenId, optionName} = req.body;  
+  const { kitchenId, optionName } = req.body;
 
   try {
     const data = await kitechnModel.addPaymentOption(kitchenId, optionName);
-    if(data.affectedRows>0)
-    res.json({success:true});
-  else res.json({success:false});
+    if (data.affectedRows > 0) res.json({ success: true });
+    else res.json({ success: false });
   } catch (err) {
     next(err);
   }
 };
 exports.getHomeScreenData = async (req, res, next) => {
-
-  
-  const {id} = req.params;  
+  const { id } = req.params;
   try {
     const rev = await kitechnModel.getRevenue(id);
     const exp = await kitechnModel.getExpense(id);
     const last3 = await kitechnModel.getLatestOrders(id);
 
-    if(rev && last3)
-    res.json({success:true, revenue:rev, expense:exp,recent:last3});
-  else res.json({success:false});
+    const pendingOrder = await kitechnModel.getPendingOrders(id);
+
+    if (rev && last3  && pendingOrder)
+      res.json({
+        success: true,
+        revenue: rev,
+        expense: exp,
+        recent: last3,
+        pendingOrders: pendingOrder,
+      });
+    else res.json({ success: false });
   } catch (err) {
     next(err);
   }
 };
 
 exports.getTableStatus = async (req, res, next) => {
-  
-  const {kitchenId, table} = req.query;  
+  const { kitchenId, table } = req.query;
   try {
-    const status = await kitechnModel.getTableStatus(kitchenId,table);
-    
+    const status = await kitechnModel.getTableStatus(kitchenId, table);
 
-    if(status.length==0)
-    res.json({allowed:true});
-  else res.json({allowed:false});
+    if (status.length == 0) res.json({ allowed: true });
+    else res.json({ allowed: false });
   } catch (err) {
     next(err);
   }
 };
 exports.getTableDetails = async (req, res, next) => {
-  
-  const {kitchenId} = req.query;  
+  const { kitchenId } = req.query;
   try {
     const status = await kitechnModel.getTableDetails(kitchenId);
-    if(status)
-    res.json({success:true,status});
-  else res.json({success:false});
+    if (status) res.json({ success: true, status });
+    else res.json({ success: false });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getTaxDetails = async (req, res, next) => {
+  const { kitchenId } = req.query;
+
+  try {
+    const taxDetails = await kitechnModel.getTaxDetails(kitchenId);
+    if (taxDetails) res.json(taxDetails);
+    else res.json({ success: false });
   } catch (err) {
     next(err);
   }

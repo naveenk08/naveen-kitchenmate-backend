@@ -36,13 +36,14 @@ const getitemsByCategoryAndKitchen = async (kitchenid, catId) => {
 const getItemByKitchen = async (kitchenid) => {
   const [rows] = await db.query(
     `SELECT 
-    c.id catId,
-    c.mapValue catName,
+    c.id AS catId,
+    c.mapValue AS catName,
     c.mapDesc,
     COUNT(i.itemid) AS item_count,
     JSON_ARRAYAGG(
         JSON_OBJECT(
             'itemId', i.itemid,
+            'count', COALESCE(qty.total_qty, 0),
             'itemName', i.itemName,
             'itemDesc1', i.itemDesc1,
             'itemDesc2', i.itemDesc2,
@@ -56,18 +57,33 @@ const getItemByKitchen = async (kitchenid) => {
             'updatetime', i.updatetime
         )
     ) AS items
-    FROM 
-        kt_masterMapping c
-    LEFT JOIN 
-        kt_items i ON c.id = i.itemCategory 
-        and c.mapType = 'Category'
-     JOIN
-        kt_masterMapping mm on mm.id = i.prepKitchen
-    where i.kitchenId = ?
-    GROUP BY 
-        c.id, c.mapValue, c.mapDesc
-    ORDER BY 
-    c.mapValue;`,
+FROM 
+    kt_masterMapping c
+LEFT JOIN 
+    kt_items i 
+    ON c.id = i.itemCategory 
+   AND c.mapType = 'Category'
+JOIN 
+    kt_masterMapping mm 
+    ON mm.id = i.prepKitchen
+LEFT JOIN (
+    SELECT 
+        itemId, 
+        SUM(quantity) AS total_qty
+    FROM kt_orderDetails od, kt_orderHeader oh
+    WHERE oh.orderId = od.orderId
+    and oh.delFlag = 0
+    and oh.status=1
+    and DATEDIFF(SYSDATE(), oh.orderTime) < 30
+    GROUP BY itemId
+) qty ON qty.itemId = i.itemid
+WHERE 
+    i.kitchenId = ?
+GROUP BY 
+    c.id, c.mapValue, c.mapDesc
+ORDER BY 
+    c.mapValue
+;`,
     [kitchenid]
   );
   

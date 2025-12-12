@@ -3,6 +3,7 @@ const OrderController = require("../controllers/orderController");
 const router = express.Router();
 
 router.get("/activeOrder/:id", OrderController.getAllActiveOrders);
+router.get("/showRecentOrders/:id", OrderController.showRecentOrders);
 router.get("/showOrders/:id/:date", OrderController.showOrders);
 router.get("/getOrder/:id", OrderController.getOrderDetailsById);
 router.get("/getOrderHeader/:id", OrderController.getOrderHeaderById);
@@ -16,10 +17,11 @@ router.put("/deleteOrder", OrderController.deleteOrder);
 router.put("/changePayment", OrderController.changePayment);
 router.get("/getOrdersForKitchen/:id", OrderController.getOrdersForKitchen);
 router.put("/updatePrepStatus", OrderController.updatePrepStatus);
-router.put("/updatePrepStatus", OrderController.updatePrepStatus);
 router.put("/deleteOrderItem", OrderController.deleteOrderItem);
 router.post("/updateOrder", OrderController.updateOrder);
 router.get("/checkActiveTableOrder/:kitchenId/:tableId", OrderController.checkActiveTableOrder);
+router.post("/reset-sequence", OrderController.resetOrderSequence);
+router.get("/pendingOrders/:kitchenId", OrderController.pendingOrders);
 
 
 

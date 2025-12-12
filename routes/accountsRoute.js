@@ -8,6 +8,7 @@ router.post("/updateAccountClosing",AccountsController.updateAccountClosing)
 router.post("/updateAccount",AccountsController.updateAccount)
 router.post("/reopenAccount",AccountsController.reopenAccount)
 router.get("/getAccountStatus",AccountsController.getAccountStatus)
+router.post("/adjustAccount",AccountsController.adjustAccount)
 
 
 
