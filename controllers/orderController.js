@@ -1,10 +1,6 @@
 const OrderModel = require("../models/orderModel");
 const KitchenModel = require("../models/kitchenModel");
 
-const {
-  sendOrderConfirmation,
-  sendOrderInvoice,
-} = require("../services/newSendEmail");
 
 const { sendMessageToAll } = require("../services/pusherService");
 const { expenseModel } = require("../models/expenseModel");

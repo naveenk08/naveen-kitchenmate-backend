@@ -18,7 +18,7 @@ const AccountsRoute = require("./routes/accountsRoute");
 const app = express();
 app.use(express.json()); // Handles JSON requests
 app.use(express.urlencoded({ extended: true })); // Handles URL-encoded form data
-app.use(bodyParser.json());
+// app.use(bodyParser.json());
 app.use(cors({
   origin: "*", // Allow all for testing (replace with your frontend URL later)
   methods: ["GET", "POST", "OPTIONS"],

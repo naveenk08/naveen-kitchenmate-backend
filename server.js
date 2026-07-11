@@ -1,14 +1,14 @@
 require('dotenv').config();
-const bodyParser = require('body-parser');
-const { startResetJob } = require('./jobs/itemResetJob');
 
 
 const app = require('./app');
 
-startResetJob();
+const PORT = process.env.PORT || 3001;
 
-const PORT = 3001
+// Only start the scheduler when running locally
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
 
-app.listen(PORT,'0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}

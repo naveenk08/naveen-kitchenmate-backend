@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: Kitchenmate Backend API
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    MemorySize: 512
+
+Resources:
+  KitchenmateBackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda.handler
+
+      Environment:
+        Variables:
+
+          COMPANY_NAME: "kitchenmate"
+
+          DB_HOST: "gateway01.ap-southeast-1.prod.aws.tidbcloud.com"
+          DB_NAME: "naveen_retail_db"
+          DB_PASS: "EiE3uV2QJXx9Y83O"
+          DB_PORT: "4000"
+          DB_USER: "kD4vuBdkSJw4mLY.root"
+
+          DEFAULT_FOOD_IMG: ""
+
+          GMAIL_ID: ""
+          GMAIL_PASSKEY: ""
+
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+
+        Proxy:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+Outputs:
+  ApiUrl:
+    Description: HTTP API endpoint
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

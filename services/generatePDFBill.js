@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const puppeteer = require("puppeteer");
+// const puppeteer = require("puppeteer");
 
 exports.generateReceiptImage = async (order) => {
   return new Promise(async (resolve, reject) => {

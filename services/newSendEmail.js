@@ -1,5 +1,5 @@
 const nodemailer = require("nodemailer");
-const generateInvoiceImage = require("../services/generatePDFBill");
+// const generateInvoiceImage = require("../services/generatePDFBill");
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
