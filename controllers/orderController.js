@@ -393,10 +393,10 @@ exports.markOrderPaid = async (req, res, next) => {
   } = data;
 
   try {
+
     // Call the model function to execute the SQL query
     const result = await OrderModel.markOrderPaid(
       orderId,
-      paymentMethod,
       discount,
       netAmount,
       packingCharge,
@@ -414,11 +414,8 @@ exports.markOrderPaid = async (req, res, next) => {
       await OrderModel.addPayment(orderId, paymentMethod, netAmount);
     }
 
+
     if (result.affectedRows > 0) {
-      // const orderData = await OrderModel.getOrderDetailsPDF(orderId);
-
-      // const sendPDF = sendOrderInvoice(orderData);
-
       return res.status(200).json({ success: true, message: "Order Paid" });
     } else {
       return res

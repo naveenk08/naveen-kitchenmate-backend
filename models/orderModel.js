@@ -552,7 +552,6 @@ const newOrderDetail = async (
 
 const markOrderPaid = async (
   orderId,
-  paymentMethod,
   discount,
   netAmount,
   packingCharge,
@@ -564,7 +563,6 @@ const markOrderPaid = async (
   const query = `UPDATE kt_orderHeader SET status = 1,paymentType=1,discount=?,net_amount=?,packingCharge=?,  
                  billName=?, billContact=?,billEmail=?, tax=? WHERE orderId = ?`;
   const [result] = await db.query(query, [
-    paymentMethod,
     discount,
     netAmount,
     packingCharge,

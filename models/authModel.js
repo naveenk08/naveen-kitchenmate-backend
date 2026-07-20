@@ -1,9 +1,10 @@
 const db = require("../config/db");
+const s3 = require("../services/s3Service");
 
 const verifyUser = async (username, password) => {
   //   const { username, password } = req.body;
   const query = `select ku.id,kk.id kId ,ku.firstName,ku.lastname,ku.type,kk.name,kk.addr1,kk.addr2,kk.contact,kk.logo,kk.sub_level,kk.totTables,kk.secret,
-  kk.masterDevice,kk.kitchenDevice,kk.defaultCat,kk.defaultPrinting,kk.kotEnabled,kk.printerName, kk.accounts
+  kk.masterDevice,kk.kitchenDevice,kk.defaultCat,kk.defaultPrinting,kk.kotEnabled,kk.printerName, kk.accounts,kk.metadata->'$.menu_version' as menuVersion
                 from kt_users ku 
                 left join kt_kitchens kk 
                 on ku.kitchen_id = kk.id
@@ -14,7 +15,8 @@ const verifyUser = async (username, password) => {
   const [results] = await db.query(query, [username, password]);
   if (results.length > 0) {
     const user = results[0];
-    return user;
+    const logoUrl = await s3.getDownloadUrl(user.logo)
+    return {...user, logoUrl};
   } else {
     return false;
   }
@@ -22,7 +24,7 @@ const verifyUser = async (username, password) => {
 const getUser = async (id) => {
   //   const { username, password } = req.body;
   const query = `select ku.id,kk.id kId ,ku.firstName,ku.lastname,ku.type,kk.name,kk.addr1,kk.addr2,kk.contact,kk.logo,kk.sub_level,kk.totTables,
-  kk.masterDevice,kk.kitchenDevice,kk.defaultCat, kk.defaultPrinting, kk.kotEnabled,kk.printerName, kk.accounts,kk.gst,kk.billFtText
+  kk.masterDevice,kk.kitchenDevice,kk.defaultCat, kk.defaultPrinting, kk.kotEnabled,kk.printerName, kk.accounts,kk.gst,kk.billFtText, kk.metadata->'$.menu_version' as menuVersion
                 from kt_users ku 
                 left join kt_kitchens kk 
                 on ku.kitchen_id = kk.id
@@ -30,7 +32,8 @@ const getUser = async (id) => {
   const [results] = await db.query(query, [id]);
   if (results.length > 0) {
     const user = results[0];
-    return user;
+    // const logoUrl = await s3.getDownloadUrl(user.logo);
+    return {...user};
   } else {
     return false;
   }

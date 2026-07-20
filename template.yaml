@@ -13,6 +13,11 @@ Resources:
   KitchenmateBackendFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Policies:
+        - S3ReadPolicy:
+            BucketName: naveen-kitchenmate-bucket
+        - S3CrudPolicy:
+            BucketName: naveen-kitchenmate-bucket
       CodeUri: .
       Handler: lambda.handler
 
@@ -26,6 +31,7 @@ Resources:
           DB_PASS: "EiE3uV2QJXx9Y83O"
           DB_PORT: "4000"
           DB_USER: "kD4vuBdkSJw4mLY.root"
+          AWS_BUCKET_NAME: "naveen-kitchenmate-bucket"
 
           DEFAULT_FOOD_IMG: ""
 
@@ -44,6 +50,8 @@ Resources:
           Properties:
             Path: /{proxy+}
             Method: ANY
+
+
 Outputs:
   ApiUrl:
     Description: HTTP API endpoint
