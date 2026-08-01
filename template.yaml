@@ -51,6 +51,37 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
+  DailyReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:StartQuery
+                - logs:GetQueryResults
+                - logs:DescribeLogGroups
+              Resource: "*"
+      CodeUri: .
+      Handler: dailyReport.handler
+      Runtime: nodejs20.x
+      Timeout: 300
+      MemorySize: 256
+
+      Environment:
+        Variables:
+          GMAIL_ID: "xbotlistautomation@gmail.com"
+          GMAIL_PASSKEY: "omwk ywam xgpp qbdl"
+          REPORT_EMAIL: "naveenkrishnab08@zohomail.in"
+          LOG_GROUP_NAME: "/aws/lambda/kitchenmate-backend-KitchenmateBackendFunction-uJdzgwiHiJMm"
+
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(25 18 * * ? *)
+
 
 Outputs:
   ApiUrl:

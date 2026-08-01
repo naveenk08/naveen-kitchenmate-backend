@@ -2,7 +2,6 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 
-
 // const errorHandler = require("./middleware/errorHandler.js");
 
 const ItemRoutes = require("./routes/itemRoute");
@@ -19,17 +18,51 @@ const app = express();
 app.use(express.json()); // Handles JSON requests
 app.use(express.urlencoded({ extended: true })); // Handles URL-encoded form data
 // app.use(bodyParser.json());
-app.use(cors({
-  origin: "*", // Allow all for testing (replace with your frontend URL later)
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
-}));
+app.use(
+  cors({
+    origin: "*", // Allow all for testing (replace with your frontend URL later)
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  }),
+);
+app.use((req, res, next) => {
+  const start = Date.now();
 
-app.get('/', (req, res) => {
-  console.log("GET / route hit");
-    res.status(200).send('OK');
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+
+    console.log({
+      timestamp: new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+      method: req.method,
+      path: req.originalUrl,
+      query: Object.keys(req.query).length,
+      route:
+        req.baseUrl && req.route
+          ? req.baseUrl + req.route.path
+          : req.originalUrl,
+      status: res.statusCode,
+      duration: duration,
+      ip: req.ip,
+    });
   });
-    
+
+  next();
+});
+
+app.get("/", (req, res) => {
+  console.log("GET / route hit");
+  res.status(200).send("OK");
+});
+
 // Routes
 app.use("/api/category", CategoryRoutes);
 app.use("/api/item", ItemRoutes);
